@@ -1,0 +1,28 @@
+#!/usr/bin/env python3
+
+url = "https://streams.radiobob.de/"
+import urllib.request
+html = urllib.request.urlopen(url).read()
+
+import re
+from bs4 import BeautifulSoup
+soup = BeautifulSoup(html, "lxml")
+
+playlist = []
+for div in soup.find_all("div",class_="wrapper"):
+    title = div.find('h1').text
+    uri = sorted(div.find_all('a', href=re.compile('.*mp3.*/$')), key=lambda x: x['href'], reverse=True)[0]['href']
+    albumart = div.find(class_="logo_wrapper")
+    if albumart:
+        albumart = albumart.img['src']
+    else:
+        albumart = "/albumart"
+    playlist.append({
+        "service": "webradio",
+        "title": title,
+        "uri": uri,
+        "albumart": albumart,
+    })
+
+import json
+print(json.dumps(playlist))

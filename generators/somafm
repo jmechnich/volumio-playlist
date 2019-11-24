@@ -1,0 +1,29 @@
+#!/usr/bin/env python3
+
+url = "https://somafm.com"
+import urllib.request
+html = urllib.request.urlopen(url + "/listen/").read()
+
+from bs4 import BeautifulSoup
+soup = BeautifulSoup(html, "lxml")
+
+playlist = []
+for li in soup.find("div",id="stations").ul:
+    title = li.find('h3')
+    if title == -1:
+        continue
+    title = title.text
+    img = li.find('img')['src']
+    desc = li.find('p', class_="descr").text
+    for nobr in li.find_all('nobr'):
+        if nobr.text.startswith("MP3"):
+            pls = nobr.find('a')["href"]
+    playlist.append({
+        'service': 'webradio',
+        'uri': url + pls,
+        'title': "%s - %s" % (title, desc),
+        'albumart': url + img
+    })
+
+import json
+print(json.dumps(playlist))
