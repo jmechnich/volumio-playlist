@@ -1,0 +1,202 @@
+#!/usr/bin/env python3
+
+import argparse, json, os
+
+################################################################################
+# M3U handling
+################################################################################
+def m3u_read(filename):
+    print("m3u_read not implemented yet")
+    return []
+
+def m3u_write(filename, data):
+    print("m3u_write not implemented yet")
+
+
+################################################################################
+# PLS handling
+################################################################################
+def pls_read(f):
+    ret = []
+    line = f.readline().strip()
+    if line  != '[playlist]':
+        print("Error reading PLS header, got '%s'" % line)
+        return None
+    pls_dict = {}
+    ret = []
+    for line in f.readlines():
+        line = line.strip()
+        if not len(line): continue
+        sep = line.find('=')
+        if sep == -1: continue
+        pls_dict[line[:sep]] = line[sep+1:]
+    n = int(pls_dict.get('numberofentries', 0))
+    for i in range(1, n+1):
+        url = pls_dict.get('File%d' % i)
+        title = pls_dict.get('Title%d' % i)
+        if not url.startswith('http'):
+            print("Skipping '%s', only handling http urls")
+            continue
+        ret.append({
+            'service': 'webradio',
+            'uri': url,
+            'title': title,
+            'albumart': '/albumart',
+        })
+    return ret
+
+def pls_write(f, data):
+    f.write("[playlist]\n")
+    f.write("numberofentries=%d" % len(data))
+    for i, entry in enumerate(data, 1):
+        f.write("File%d=%s\n" % (i, entry.get(uri, '')))
+        f.write("Title%d=%s\n" % (i, entry.get(title, '')))
+        f.write("Length%d=-1\n" % i)
+    f.write("Version=2\n")
+
+
+################################################################################
+# Volumio playlist handling
+################################################################################
+def volumio_read(f):
+    return json.load(f)
+
+def volumio_write(f, data):
+    json.dump(data, f)
+
+
+################################################################################
+# Read / write handling
+################################################################################
+def read_func(arg):
+    return {
+        '.m3u': m3u_read,
+        '.pls': pls_read,
+        '':    volumio_read,
+    }.get(arg)
+
+def write_func(arg):
+    return {
+        '.m3u': m3u_write,
+        '.pls': pls_write,
+        '':    volumio_write,
+    }.get(arg)
+
+def playlist_read(filename):
+    playlist = None
+    ext = os.path.splitext(filename)[1]
+    f = sys.stdin if filename == '-' else open(filename, 'r')
+    playlist = read_func(ext)(f)
+    if playlist is None:
+        raise Exception("Error handling '%s'" % filename)
+    return playlist
+
+def playlist_write(filename, data, force=False):
+    if os.path.exists(filename) and not force:
+        print("File '%s' already exists" % filename)
+        return
+    ext = os.path.splitext(filename)[1]
+    f = sys.stdout if filename == '-' else open(filename, 'w')
+    write_func(ext)(f, data)
+
+################################################################################
+# submodules
+################################################################################
+def playlist_convert(filename, args):
+    ofilename = os.path.splitext(filename)[0]
+    if not args.output_dir is None:
+        ofilename = os.path.join(args.output_dir,os.path.basename(ofilename))
+    if ofilename == filename:
+        print('Input and output file are the same, skipping')
+        return
+    playlist = playlist_read(filename)
+    playlist_write(ofilename, playlist, args.force)
+    
+def playlist_modify(filename, args):
+    pass
+
+def playlist_print(filename, args):
+    try:
+        print("Dumping", filename)
+        for i, entry in enumerate(playlist_read(filename)):
+            print()
+            print("Entry %d:" % i)
+            for item in entry.items():
+                print("  %10s: %s" % item)
+    except json.decoder.JSONDecodeError as e:
+        print("Error decoding JSON from '%s', not a Volumio playlist file?" % filename)
+
+################################################################################
+# main function (only selects submodule)
+################################################################################
+def main(args,command='print'):
+    if args.debug:
+        print('main:', command, args)
+    
+    for filename in args.file:
+        if not os.path.exists(filename):
+            print("Skipping", filename)
+            continue
+        main.funcmap.get(command)(filename, args)
+        
+main.funcmap = {
+    'convert': playlist_convert,
+    'modify':  playlist_modify,
+    'print':   playlist_print,
+}
+
+################################################################################
+# command line parsing
+################################################################################
+def parse_cmdline():
+    parser = argparse.ArgumentParser(
+        prog='volumio-playlist',
+        description='Tool for handling Volumio playlists.',
+    )
+    parser.add_argument(
+        '-d', '--debug',
+        action='store_true',
+        help='enable debug output',
+    )
+    parser.set_defaults(func=lambda x: parser.print_help())
+    subparsers = parser.add_subparsers(help='sub-command help')
+
+    parser_convert = subparsers.add_parser(
+        'convert', help='convert M3U/PLS playlist files to Volumio format.')
+    parser_convert.add_argument(
+        '-f', '--force',
+        action='store_true',
+        help='overwrite files'
+    )
+    parser_convert.add_argument(
+        '-o', '--output-dir',
+        help='output directory'
+    )
+    parser_convert.add_argument(
+        'file',
+        nargs='+',
+        help='one ore more M3U/PLS playlist files'
+    )
+    parser_convert.set_defaults(
+        func=lambda args: main(args,command='convert'))
+    
+    parser_modify = subparsers.add_parser(
+        'modify', help='modify Volumio playlist ')
+    parser_modify.set_defaults(
+        func=lambda args: main(args,command='modify'))
+    
+    parser_print = subparsers.add_parser(
+        'print', help='print Volumio playlist')
+    parser_print.add_argument(
+        'file',
+        nargs='+',
+        help='one ore more Volumio playlist files'
+    )
+    parser_print.set_defaults(
+        func=lambda args: main(args,command='print'))
+
+    args = parser.parse_args()
+    args.func(args)
+    
+if __name__ == '__main__':
+    parse_cmdline()
