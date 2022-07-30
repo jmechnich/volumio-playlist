@@ -129,9 +129,6 @@ def playlist_merge(args):
             playlist.extend(playlist_read(filename))
     playlist_write(args.output_file, playlist, args.force)
 
-def playlist_modify(args):
-    pass
-
 def playlist_print(args):
     for filename in args.file:
         if not os.path.exists(filename):
@@ -194,10 +191,6 @@ def parse_cmdline():
         help='one ore more playlist files'
     )
     parser_merge.set_defaults(func=lambda args: playlist_merge(args))
-    
-    parser_modify = subparsers.add_parser(
-        'modify', help='modify Volumio playlist')
-    parser_modify.set_defaults(func=lambda args: playlist_modify(args))
     
     parser_print = subparsers.add_parser(
         'print', help='print Volumio playlist')
